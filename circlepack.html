@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.node {
+  cursor: pointer;
+}
+
+.node:hover {
+  stroke: #000;
+  stroke-width: 1.5px;
+}
+
+.node--leaf {
+  fill: white;
+}
+
+.label {
+  font: 11px "Helvetica Neue", Helvetica, Arial, sans-serif;
+  text-anchor: middle;
+  text-shadow: 0 1px 0 #fff, 1px 0 0 #fff, -1px 0 0 #fff, 0 -1px 0 #fff;
+}
+
+.label,
+.node--root,
+.node--leaf {
+  pointer-events: all;
+}
+
+
+</style>
+
+<div id="block_container">
+   <div id="searchName"></div>
+</div>
+  <div id="button-wrapper">
+    <button id="dftButton" >Depth First</button>
+    <button id="bftButton" >Breadth First</button>
+    <button id="resetButton">Reset</button>
+  </div>
+  <form id="myform" action="submit-form.php">
+  Search: <input type='text' name='query', id='query'>
+  <a href="#" id="submit">Submit</a>
+  </form>
+<svg width="960" height="960"></svg>
+<script src="https://d3js.org/d3.v4.min.js"></script>
+<script>
+
+function select2DataCollectName(d) {
+    if (d.children)
+        d.children.forEach(select2DataCollectName);
+    else if (d._children)
+        d._children.forEach(select2DataCollectName);
+    select2Data.push(d.name);
+}
+
+function searchTree(d) {
+    if (d.children)
+        d.children.forEach(searchTree);
+    else if (d._children)
+        d._children.forEach(searchTree);
+    var searchFieldValue = eval(searchField);
+    if (searchFieldValue && searchFieldValue.match(searchText)) {
+            // Walk parent chain
+            var ancestors = [];
+            var parent = d;
+            while (typeof(parent) !== "undefined") {
+                ancestors.push(parent);
+    //console.log(parent);
+                parent.class = "found";
+                parent = parent.parent;
+            }
+      //console.log(ancestors);
+    }
+}
+
+
+
+var svg = d3.select("svg"),
+    margin = 20,
+    diameter = +svg.attr("width"),
+    g = svg.append("g").attr("transform", "translate(" + diameter / 2 + "," + diameter / 2 + ")");
+
+var color = d3.scaleLinear()
+    .domain([-1, 5])
+    .range(["hsl(152,80%,80%)", "hsl(228,30%,40%)"])
+    .interpolate(d3.interpolateHcl);
+
+var pack = d3.pack()
+    .size([diameter - margin, diameter - margin])
+    .padding(2);
+
+d3.json("flare.json", function(error, root) {
+
+  if (error) throw error;
+
+  root = d3.hierarchy(root)
+      .sum(function(d) { return d.size; })
+      .sort(function(a, b) { return b.value - a.value; });
+
+  var focus = root,
+      nodes = pack(root).descendants(),
+      view;
+
+
+
+  var circle = g.selectAll("circle")
+    .data(nodes)
+    .enter().append("circle")
+      .attr("class", function(d) { return d.parent ? d.children ? "node" : "node node--leaf" : "node node--root"; })
+      .style("fill", function(d) { return d.children ? color(d.depth) : null; })
+      .on("click", function(d) { if (focus !== d && d.children) zoom(d), d3.event.stopPropagation(); })
+      //.on("mouseover", function(d){ console.log(d), d3.select(this).enter().append("text")
+       //                                                       .attr("class", "label")
+        //                                                      .style("fill-opacity", 1)
+         //                                                     .style("display", "inline")
+           //                                                   .text("ciao")});
+
+
+  var text = g.selectAll("text")
+    .data(nodes)
+   .enter().append("text")
+      .attr("class", "label")
+      .style("fill-opacity", function(d) { return d.parent === root ? 1 : 0; })
+      .style("display", function(d) { return d.parent === root ? "inline" : "none"; })
+      .text(function(d) { return d.data.name; });
+
+  var node = g.selectAll("circle,text");
+
+  svg
+      .style("background", color(-1))
+      .on("click", function() { zoom(root); });
+
+  zoomTo([root.x, root.y, root.r * 2 + margin]);
+
+  var bfsButton = d3.select("#bftButton")
+    .on("click", function(){
+      bft(root, "aaaacxi7gj4eqascvqjaabaab4");
+    });
+
+  var dfsButton = d3.select("#dftButton")
+    .on("click", function(){
+      dft(root, "aaaacxi7gj4eqascvqjaabaab4");
+    });
+
+  var resetButton = d3.select("#resetButton")
+    .on("click", function(){
+      resetTraversal(root);
+    });
+
+  var searchButton = d3.select('#submit').on('click', function() {
+    // prevent form submission
+    var queryVal = document.getElementById("query").value;
+    console.log(document.getElementById("query").value);
+    dft(root, queryVal);
+    //d3.event.preventDefault();
+    // later, submit form?
+    //var form = d3.select(this.parentNode).node();
+    //form.submit();
+  })
+
+
+  //function handleClick(event){
+  //    console.log(document.getElementById("myVal").value)
+      //draw(document.getElementById("myVal").value)
+  //    return false;
+  //}
+
+
+
+  function zoom(d) {
+    var focus0 = focus; focus = d;
+
+    var transition = d3.transition()
+        .duration(d3.event.altKey ? 7500 : 750)
+        .tween("zoom", function(d) {
+          var i = d3.interpolateZoom(view, [focus.x, focus.y, focus.r * 2 + margin]);
+          return function(t) { zoomTo(i(t)); };
+        });
+
+    transition.selectAll("text")
+      .filter(function(d) { return d.parent === focus || this.style.display === "inline"; })
+        .style("fill-opacity", function(d) { return d.parent === focus ? 1 : 0; })
+        .on("start", function(d) { if (d.parent === focus) this.style.display = "inline"; })
+        .on("end", function(d) { if (d.parent !== focus) this.style.display = "none"; });
+  }
+
+  function zoomTo(v) {
+    var k = diameter / v[2]; view = v;
+    node.attr("transform", function(d) { return "translate(" + (d.x - v[0]) * k + "," + (d.y - v[1]) * k + ")"; });
+    circle.attr("r", function(d) { return d.r * k; });
+  }
+
+function resetTraversal(root){
+  //d3.selectAll(".node").classed("visited",false);
+   zoom(root);
+}
+
+
+function visitElement(element,animX){
+  var animDuration = 200;
+ // d3.select("#node-"+element.id).classed("visited",true);
+  d3.select("#node-"+element.name)
+    .transition().duration(animDuration).delay(animDuration*animX)
+    .style("fill","red").style("stroke","red");
+}
+
+function dft(root, queryString){
+  var stack=[];
+  var animX=0;
+  stack.push(root);
+  while(stack.length!==0){
+    var element = stack.pop();
+    //visitElement(element,animX);
+    if (element.data.name == queryString){
+      zoom(element);
+      break;
+    }
+    //console.log(element.data.name);
+
+    animX=animX+1;
+    if(element.children!==undefined){
+      for(var i=0; i<element.children.length; i++){
+        stack.push(element.children[element.children.length-i-1]);
+      }
+    }
+  }
+}
+
+function bft(root, queryString){
+  var queue=[];
+  var animX=0;
+  queue.push(root);
+  while(queue.length!==0){
+    var element = queue.shift();
+    //visitElement(element,animX);
+    //visitElement(element,animX);
+    if (element.data.name == queryString){
+      zoom(element);
+      break;
+    }
+    //console.log(element.data.name);
+
+    animX= animX+1;
+    if(element.children!==undefined){
+      for(var i=0; i<element.children.length; i++){
+        queue.push(element.children[i]);
+      }
+    }
+  }
+}
+});
+
+</script>
